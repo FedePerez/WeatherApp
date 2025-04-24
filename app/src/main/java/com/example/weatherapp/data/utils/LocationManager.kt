@@ -91,6 +91,7 @@ class LocationManager @Inject constructor(
             val locationRequest = LocationRequest.create().apply {
                 priority = LocationRequest.PRIORITY_HIGH_ACCURACY
                 interval = 0
+                fastestInterval = 0
                 numUpdates = 1
             }
 
@@ -98,16 +99,26 @@ class LocationManager @Inject constructor(
                 override fun onLocationResult(locationResult: LocationResult) {
                     fusedLocationClient.removeLocationUpdates(this)
 
-                    val location = locationResult.lastLocation
-                    if (location != null) {
-                        continuation.resume(Result.success(location))
+                    // En Android 8, se debe usar locationResult.locations en lugar de lastLocation
+                    val location = if (locationResult.locations.isNotEmpty()) {
+                        locationResult.locations[0]
                     } else {
-                        continuation.resume(Result.failure(Exception("No se pudo obtener la ubicación")))
+                        locationResult.lastLocation
+                    }
+
+                    if (location != null) {
+                        if (!continuation.isCompleted) {
+                            continuation.resume(Result.success(location))
+                        }
+                    } else {
+                        if (!continuation.isCompleted) {
+                            continuation.resume(Result.failure(Exception("No se pudo obtener la ubicación")))
+                        }
                     }
                 }
 
                 override fun onLocationAvailability(locationAvailability: LocationAvailability) {
-                    if (!locationAvailability.isLocationAvailable) {
+                    if (!locationAvailability.isLocationAvailable && !continuation.isCompleted) {
                         fusedLocationClient.removeLocationUpdates(this)
                         continuation.resume(Result.failure(Exception("Ubicación no disponible")))
                     }
@@ -132,8 +143,19 @@ class LocationManager @Inject constructor(
                     locationCallback,
                     Looper.getMainLooper()
                 )
+
+                // Añadi un timeout para evitar el loop infinito
+                android.os.Handler(Looper.getMainLooper()).postDelayed({
+                    if (!continuation.isCompleted) {
+                        fusedLocationClient.removeLocationUpdates(locationCallback)
+                        continuation.resume(Result.failure(Exception("Tiempo de espera agotado para obtener la ubicación")))
+                    }
+                }, 10000)
+
             } catch (securityException: SecurityException) {
-                continuation.resume(Result.failure(Exception("Error de permisos de ubicación: ${securityException.message}")))
+                if (!continuation.isCompleted) {
+                    continuation.resume(Result.failure(Exception("Error de permisos de ubicación: ${securityException.message}")))
+                }
                 return@suspendCancellableCoroutine
             }
 
@@ -141,7 +163,9 @@ class LocationManager @Inject constructor(
                 fusedLocationClient.removeLocationUpdates(locationCallback)
             }
         } catch (e: Exception) {
-            continuation.resume(Result.failure(e))
+            if (!continuation.isCompleted) {
+                continuation.resume(Result.failure(e))
+            }
         }
     }
 }
