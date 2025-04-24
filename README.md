@@ -37,7 +37,7 @@ El proyecto está implementado siguiendo los principios de Clean Architecture co
 git clone https://github.com/yourusername/weatherapp.git
 ```
 
-2. Obtén una API key gratuita de [OpenWeatherMap](https://openweathermap.org/api)
+2. Obtén una API key gratuita de [OpenWeatherMap](https://openweathermap.org/api) (En el caso de no querer generar API key ya tiene una)
 
 3. Configura la API key en el archivo `build.gradle.kts` del módulo app:
 ```kotlin
